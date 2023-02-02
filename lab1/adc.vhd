@@ -31,7 +31,7 @@ architecture adc_arch of adc is
 -- signal declarations
 signal counter: unsigned (19 downto 0);
 constant PERIOD: integer := 100;  -- every 2 microseconds
-constant PULSE_PERIOD: integer := 1000000; -- for 20 ns
+constant PULSE_PERIOD: integer := 2; -- for 20 ns
 signal pulse : std_logic;
 signal next_channel : std_logic_vector(3 downto 0);
 signal current_channel : std_logic_vector(3 downto 0);
