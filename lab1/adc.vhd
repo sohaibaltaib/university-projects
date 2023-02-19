@@ -1,154 +1,191 @@
 library IEEE;
-use IEEE.std_logic_1164.all;
-use IEEE.numeric_std.all;
-use ieee.std_logic_unsigned.all;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
 
-
-
-		
 entity adc is
-	port (
-		clk		: in std_logic;
-		reset    : in  std_logic;
-
-		config_reg   : in std_logic_vector(15 downto 0);  
-		
-		adc_data : out std_logic_vector(11 downto 0) := (others => '0');       
-	   channels : out std_logic_vector(3 downto 0);       
-
-		sdo      : in  std_logic;
-		convst   : out  std_logic;
-		sck      : out  std_logic;
-		sdi      : out  std_logic
-		
+	port(
+		clk					:	in		std_logic;
+		reset					: 	in 	std_logic;
+		config_reg			:	in 	std_logic_vector(15 downto 0);
+		sdo					: 	in		std_logic;
+		channel				:  out	std_logic_vector(3 downto 0);
+		adc_data 			:  out	std_logic_vector(11 downto 0);
+		sck					: 	out 	std_logic;
+		sdi					: 	out 	std_logic; 
+		convst				: 	out	std_logic
 	);
-
-end entity adc;
-
-architecture adc_arch of adc is
+end entity;	
 
 
--- signal declarations
-signal counter: unsigned (19 downto 0);
-constant PERIOD: integer := 100;  -- every 2 microseconds
-constant PULSE_PERIOD: integer := 2; -- for 20 ns
-signal pulse : std_logic;
-signal next_channel : std_logic_vector(3 downto 0);
-signal current_channel : std_logic_vector(3 downto 0);
-signal found : std_logic;
+architecture adc_arc of adc is
 
--- State machine to control SCK and CONVST signals
-signal start_pulse : std_logic;
-signal sclk_start : std_logic;
-signal sck_counter : unsigned (19 downto 0);
-constant SCK_START: integer := 65; -- 1.3 microseconds
-constant SCK_END: integer := 80; -- 1.6 microseconds
+	-- signal declarations
+	type state_type is (s0, s1, s2);
+	signal current_state, next_state : state_type;
+	signal config_sdi : std_logic_vector(5 downto 0) := "000010";
+	signal cnt, current_channel: integer := 0;
+	signal sck_sig, clk_sig, select_ch, sample_ch, data_out : std_logic := '0';
+	signal shift_reg : std_logic_vector(11 downto 0) := "000000000000";
 
-begin 
-
-	-- Clock and Reset process
-	process(clk, reset)
-	begin
-	
-		if (reset = '1') then
-			counter <= (others => '0');
-			pulse <= '0';
-		elsif (rising_edge(clk)) then
-			if (counter = PERIOD - 1) then
-				counter <= (others => '0');
-				pulse <= '1';
-			elsif (counter = PULSE_PERIOD - 1) then
-				counter <= (others => '0');
-				pulse <= '0';
-			else
-				counter <= counter + 1;
-			end if;
-		end if;
-	end process;
-
-	-- Find the next channel state machine
-	process(pulse)
-	begin
-		if (pulse = '1') then
-			current_channel <= next_channel;
-			found <= '0';
+	-- Function to look for the next set 1-bit in config_reg
+	impure function next_channel return integer is
+		begin	
 			for i in 0 to 15 loop
-				if (found = '0' and config_reg(i) = '1') then
-					if (to_integer(unsigned(current_channel)) < i) then
-						next_channel <= std_logic_vector(to_unsigned(i, 4));
-						found <= '1';
-					end if;
+				if (i >= current_channel + 1 and i < 16) then
+					if(config_reg(i) = '1') then
+					 return i;
+					 end if;
 				end if;
 			end loop;
-			if (found = '0') then
-				for i in 0 to 15 loop
-					if (config_reg(i) = '1') then
-						next_channel <= std_logic_vector(to_unsigned(i, 4));
-						found <= '1';
-						exit;
-					end if;
-				end loop;
-			end if;
-		end if;
-	end process;
-	
-	
-	process(current_channel)
-	begin
-		case current_channel is
-			when "0000" => adc_data <= "000000010000";
-			when "0001" => adc_data <= "000001001000";
-			when "0010" => adc_data <= "000100000100";
-			when "0011" => adc_data <= "010000001100";
-			when "0100" => adc_data <= "000000010001";
-			when "0101" => adc_data <= "000010001010";
-			when "0110" => adc_data <= "001000000110";
-			when "0111" => adc_data <= "100000001110";
-			when "1000" => adc_data <= "000000010001";
-			when "1001" => adc_data <= "000001001001";
-			when "1010" => adc_data <= "000100000101";
-			when "1011" => adc_data <= "010000001101";
-			when "1100" => adc_data <= "000000100011";
-			when "1101" => adc_data <= "000010001011";
-			when "1110" => adc_data <= "001000000111";
-			when "1111" => adc_data <= "100000001111";
-			when others => adc_data <= (others => '0');
-		end case;
-	end process;
-	
-
-	-- starting the SCLK 
-	process(clk, reset, pulse)
-	begin
-		if (reset = '1') then
-			start_pulse <= '0';
-			sclk_start <= '0';
-			sck_counter <= (others => '0');
-		elsif (rising_edge(clk)) then
-			if (pulse = '1') then
-				start_pulse <= '1';
-			end if;
-			if (start_pulse = '1') then
-				if (sck_counter = SCK_START - 1) then
-					sclk_start <= '1';
-				elsif (sck_counter = SCK_END - 1) then
-					sclk_start <= '0';
-					start_pulse <= '0';
-					sck_counter <= (others => '0');
-				else
-					sck_counter <= sck_counter + 1;
+			
+			for i in 0 to 15 loop
+				if (i <= current_channel - 1) then
+					if(config_reg(i) = '1') then
+					 return i;
+					 end if;
 				end if;
+			end loop;	
+		
+		return current_channel;
+	end function;	
+	
+begin
+
+	sck <= sck_sig;
+	
+-- starting sck clock
+	sck_clk: process(clk)
+		begin
+			if (rising_edge(clk) and cnt > 66 and cnt < 91) then
+			sck_sig <= not sck_sig;
+			end if;			
+	end process;
+	
+-- starting the bit data clock
+	clk_delay: process(clk)
+		begin
+			if (rising_edge(clk)) then
+			clk_sig <= not clk_sig;
+			end if;		 	
+	end process;	
+	
+-- cnt to set up the next state logic
+	counter: process(clk, reset)
+		begin
+			if (reset = '1') then
+				cnt <= 0;
+			elsif (rising_edge(clk)) then
+				convst <= '0';
+				cnt <= cnt + 1;	
+				if (cnt = 99) then
+					convst <= '1';
+					cnt <= 0;
+				elsif (cnt = 1) then
+					select_ch <= '1'; 
+					sample_ch <= '0'; 
+					data_out <= '0';
+				elsif (cnt = 63) then
+					select_ch <= '0'; 
+					sample_ch <= '1'; 
+					data_out <= '0';
+				elsif (cnt = 91) then
+					select_ch <= '0'; 
+					sample_ch <= '0'; 
+					data_out <= '1';
+				end if;
+			end if;			
+	end process;
+	
+-- State memory logic
+	state_memory: process(clk, reset)
+		begin
+			if (reset = '1') then
+				current_state <= s0;
+			elsif (rising_edge(clk)) then
+				current_state <= next_state;
 			end if;
+	end process;
+	
+	
+	next_state_logic: process(clk)
+		begin
+			if (rising_edge(clk)) then
+				case (current_state) is
+								  
+					when s0 => 
+						if (select_ch = '1') then 
+							next_state <= s0;
+						else 
+							next_state <= s1;
+						end if;
+								  
+					when s1 => 
+						if (sample_ch = '1') then
+							next_state <= s1;
+						else
+							next_state <= s2;
+						end if;
+						
+					when s2 =>
+						if (data_out = '1') then
+							next_state <= s2;
+						else
+							next_state <= s0;
+						end if;
+					when others => next_state <= s0;
+				end case;
+			end if;
+	end process;
+	
+	
+	output_logic: process(clk)
+		variable ch_data_out : std_logic_vector(3 downto 0);
+		begin
+			if (rising_edge(clk)) then
+				case (current_state) is
+					when s0 =>
+						if (cnt = 5) then
+							ch_data_out := std_logic_vector(to_unsigned(current_channel, 4)); 
+							current_channel <= next_channel; 
+						
+						elsif (cnt = 10) then
+							case (current_channel) is
+								when 0 	=> config_sdi <= "100010";
+								when 1	=> config_sdi <= "110010";
+								when 2	=> config_sdi <= "100110";
+								when 3	=> config_sdi <= "110110"; 
+								when 4	=> config_sdi <= "101010"; 
+								when 5	=> config_sdi <= "111010"; 
+								when 6	=> config_sdi <= "101110"; 
+								when 7	=> config_sdi <= "111110"; 
+								when 8	=> config_sdi <= "000010"; 
+								when 9	=> config_sdi <= "010010"; 
+								when 10	=> config_sdi <= "000110"; 
+								when 11	=> config_sdi <= "010110"; 
+								when 12	=> config_sdi <= "001010"; 
+								when 13	=> config_sdi <= "011010";
+								when 14	=> config_sdi <= "001110"; 
+								when 15	=> config_sdi <= "011110";
+								when others => config_sdi <= "100010";
+							end case;
+						end if;
+						
+					when s1 =>
+						if(clk_sig = '0') then
+							sdi <= config_sdi(5);
+							config_sdi(5 downto 1) <= config_sdi(4 downto 0);		
+							shift_reg(0) <= sdo;
+							shift_reg(11 downto 1) <= shift_reg(10 downto 0);
+						end if;
+						
+					when s2 =>
+						if (cnt = 95) then
+							channel <= ch_data_out;
+							adc_data <= shift_reg;
+						end if;
+			end case;
 		end if;
 	end process;
 	
 	
-		-- Outputs
-	channels <= current_channel;
-	convst	<= pulse;
---	sdo		<= ;
---	sdi		<= ;
-	sck 		<= sclk_start;
-
-
-end architecture;  
+end architecture;
