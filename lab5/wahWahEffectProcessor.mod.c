@@ -30,4 +30,4 @@ MODULE_INFO(depends, "");
 MODULE_ALIAS("of:N*T*CSQ,wahWahEffectProcessor");
 MODULE_ALIAS("of:N*T*CSQ,wahWahEffectProcessorC*");
 
-MODULE_INFO(srcversion, "FD7C2ABDAA01165F89412C7");
+MODULE_INFO(srcversion, "B30801A67AC287DA9668A18");
