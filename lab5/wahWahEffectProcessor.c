@@ -36,7 +36,7 @@
 
 /* Memory span of all registers (used or not) in the                     */
 /* component wahWahEffectProcessor                                            */
-#define SPAN 0x08
+#define SPAN 0x1C
 
 /*-----------------------------------------------------------------------*/
 /* wahWahEffectProcessor device structure                                     */
